@@ -1,0 +1,39 @@
+name: Mirror to andreas-hafner
+
+# Spiegelt main/master UND develop dieses isg-Repos nach andreas-hafner/<repo>.
+# andreashafner-isg ist Source of Truth; die andreas-hafner-Spiegel-Branches
+# werden bei jedem Push hart ueberschrieben (force). Push-Berechtigung kommt
+# aus dem Secret MIRROR_PAT (fine-grained PAT, Contents:write auf den Spiegeln).
+
+on:
+  push:
+    branches: ["main", "master", "develop"]
+  workflow_dispatch:
+
+concurrency:
+  group: mirror-to-ah
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    # Nur im Quell-Repo (isg) spiegeln; auf dem andreas-hafner-Spiegel No-Op.
+    if: github.repository_owner == 'andreashafner-isg'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Force-mirror main/master/develop to andreas-hafner
+        env:
+          MIRROR_PAT: ${{ secrets.MIRROR_PAT }}
+        run: |
+          set -euo pipefail
+          REPO="${GITHUB_REPOSITORY#*/}"
+          REMOTE="https://x-access-token:${MIRROR_PAT}@github.com/andreas-hafner/${REPO}.git"
+          for BR in main master develop; do
+            if git show-ref --verify --quiet "refs/remotes/origin/${BR}"; then
+              echo "Mirroring ${BR} -> andreas-hafner/${REPO}"
+              git push --force "${REMOTE}" "refs/remotes/origin/${BR}:refs/heads/${BR}"
+            fi
+          done
